@@ -1,57 +1,154 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>TraceAnime Web</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <!-- Tailwind CDN -->
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Anime Trace UI</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- GSAP for micro-animations -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-  <link rel="stylesheet" href="style.css">
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    /* shimmer skeleton */
+    @keyframes shimmer {
+      0% { background-position: -1000px 0; }
+      100% { background-position: 1000px 0; }
+    }
+    .shimmer {
+      background: linear-gradient(to right, #f6f7f8 4%, #edeef1 25%, #f6f7f8 36%);
+      background-size: 1000px 100%;
+      animation: shimmer 1.2s infinite linear;
+    }
+  </style>
 </head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+  <div x-data="traceApp()" class="w-full max-w-lg">
+    
+    <!-- Toast container -->
+    <div class="fixed top-4 right-4 z-50 space-y-2">
+      <template x-for="toast in toasts" :key="toast.id">
+        <div
+          x-transition:enter="transform ease-out duration-300"
+          x-transition:enter-start="translate-x-full opacity-0"
+          x-transition:enter-end="translate-x-0 opacity-100"
+          x-transition:leave="transform ease-in duration-300"
+          x-transition:leave-start="translate-x-0 opacity-100"
+          x-transition:leave-end="translate-x-full opacity-0"
+          :class="toast.type === 'error' ? 'bg-red-500' : 'bg-green-500'"
+          class="text-white rounded-lg shadow-lg px-4 py-2 text-sm"
+          x-text="toast.msg">
+        </div>
+      </template>
+    </div>
 
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center justify-center font-sans">
+    <!-- Card -->
+    <div class="bg-white rounded-2xl shadow-xl p-6 space-y-6">
+      <h1 class="text-xl font-bold text-center text-indigo-600">Trace Anime Episode</h1>
 
-  <!-- Notification Toast Container -->
-  <div id="toast"
-       class="fixed top-6 right-6 z-50 bg-sky-600 text-white px-4 py-3 rounded-lg shadow-xl opacity-0 -translate-y-4 pointer-events-none transition-all">
-  </div>
+      <!-- File input -->
+      <label class="block">
+        <input type="file" accept="image/*" @change="handleFile($event.target.files[0])"
+               class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
+      </label>
 
-  <section class="w-full max-w-md mx-auto p-6 space-y-6">
-    <h1 class="text-3xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500">
-      TraceAnime
-    </h1>
+      <!-- Drop zone -->
+      <div @drop.prevent="handleFile($event.dataTransfer.files[0])"
+           @dragover.prevent
+           class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center text-gray-400">
+        or drop an image here
+      </div>
 
-    <!-- Upload -->
-    <form id="uploadForm" class="space-y-4">
-      <input id="fileInput"
-             type="file"
-             accept="image/*"
-             class="block w-full cursor-pointer file:mr-4 file:rounded-lg file:border-0 file:bg-sky-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-sky-500 transition">
-      <button type="submit"
-              class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2 rounded-lg transition transform active:scale-95">
-        Search Episode
-      </button>
-    </form>
+      <!-- Skeleton / loading -->
+      <div x-show="loading" class="space-y-3">
+        <div class="shimmer h-5 w-3/5 rounded"></div>
+        <div class="shimmer h-4 w-4/5 rounded"></div>
+        <div class="shimmer aspect-video rounded-lg"></div>
+      </div>
 
-    <!-- Result Card -->
-    <div id="result"
-         class="hidden bg-slate-800 rounded-xl shadow-lg overflow-hidden animate-fadeIn">
-      <video id="videoPlayer"
-             class="w-full aspect-video bg-black"
-             controls></video>
-      <div class="p-4 space-y-2">
-        <h2 id="title" class="text-lg font-bold text-sky-400"></h2>
-        <p id="episode" class="text-sm text-slate-300"></p>
-        <a id="downloadBtn"
-           class="inline-block bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm transition">
-          Download
-        </a>
+      <!-- Result -->
+      <div x-show="result && !loading" class="space-y-3">
+        <h2 class="font-bold text-lg" x-text="result.filename"></h2>
+        <p class="text-sm text-gray-600">Episode <span x-text="result.episode"></span></p>
+        <video :src="result.video" controls class="w-full rounded-lg shadow"></video>
       </div>
     </div>
-  </section>
+  </div>
 
-  <script type="module" src="app.js"></script>
+  <script>
+  function traceApp() {
+    return {
+      loading: false,
+      result: null,
+      toasts: [],
+      toastId: 0,
+      
+      addToast(msg, type = 'success') {
+        const id = ++this.toastId;
+        this.toasts.push({ id, msg, type });
+        setTimeout(() => this.toasts.shift(), 3000);
+      },
+
+      async handleFile(file) {
+        if (!file || !file.type.startsWith('image/')) {
+          this.addToast('Please select an image file', 'error');
+          return;
+        }
+        this.result = null;
+        this.loading = true;
+        this.addToast('Uploading image…');
+
+        // 1. Upload with fallback (Catbox → Uguu)
+        let imageUrl;
+        try {
+          const fd = new FormData();
+          fd.append('reqtype', 'fileupload');
+          fd.append('userhash', '');
+          fd.append('fileToUpload', file);
+
+          const up = await fetch('https://catbox.moe/user/api.php', {
+            method: 'POST',
+            body: fd
+          });
+          const catboxUrl = await up.text();
+          if (!catboxUrl || !catboxUrl.startsWith('http')) throw new Error('Catbox failed');
+          imageUrl = catboxUrl;
+          this.addToast('Image uploaded via Catbox, searching episode…');
+        } catch (catErr) {
+          console.warn('Catbox failed, trying Uguu…');
+          try {
+            const fd = new FormData();
+            fd.append('files[]', file);
+
+            const up = await fetch('https://uguu.se/upload.php', {
+              method: 'POST',
+              body: fd
+            });
+            const uguuJson = await up.json();
+            if (!uguuJson.files?.[0]?.url) throw new Error('Uguu failed');
+            imageUrl = uguuJson.files[0].url;
+            this.addToast('Image uploaded via Uguu.se, searching episode…');
+          } catch (uguuErr) {
+            this.loading = false;
+            this.addToast('Upload failed on all services', 'error');
+            return;
+          }
+        }
+
+        // 2. Trace episode
+        try {
+          const search = await fetch(
+            `https://apii.baguss.web.id/search/epanime?apikey=bagus&url=${encodeURIComponent(imageUrl)}`
+          );
+          const data = await search.json();
+          if (!data.success) throw new Error('Search failed');
+          this.result = data;
+          this.addToast('Episode found!');
+        } catch (e) {
+          this.addToast('Search failed', 'error');
+        } finally {
+          this.loading = false;
+        }
+      }
+    };
+  }
+  </script>
 </body>
 </html>
