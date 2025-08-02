@@ -93,25 +93,23 @@
         this.loading = true;
         this.addToast('Uploading image…');
 
-        /* ---------- FIXED UPLOAD BLOCK ---------- */
+        /* ---------- NEW UPLOADER: 0x0.st ---------- */
         const fd = new FormData();
-        fd.append('file', file);         // key harus "file"
+        fd.append('file', file);
+
         let imageUrl;
         try {
-          const up = await fetch('https://cloudgood.xyz/upload.php', {
-            method: 'POST',
-            body: fd                       // biarkan browser set boundary
-          });
-          const upJson = await up.json();
-          if (!upJson.url) throw new Error('Upload failed');
-          imageUrl = upJson.url;
+          const up = await fetch('https://0x0.st', { method: 'POST', body: fd });
+          if (!up.ok) throw new Error('Upload failed');
+          imageUrl = (await up.text()).trim();
+          if (!imageUrl.startsWith('http')) throw new Error('Bad response');
           this.addToast('Image uploaded, searching episode…');
         } catch (e) {
           this.loading = false;
           this.addToast('Upload failed', 'error');
           return;
         }
-        /* --------------------------------------- */
+        /* ----------------------------------------- */
 
         // Trace episode
         try {
