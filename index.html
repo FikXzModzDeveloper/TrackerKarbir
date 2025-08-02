@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Anime Episode Tracer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* simple fade-in animation for notifications */
+    @keyframes toast-in {
+      0%   { opacity:0; transform:translateY(-20px); }
+      100% { opacity:1; transform:translateY(0);     }
+    }
+    .toast {
+      animation: toast-in .3s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
+
+  <h1 class="text-3xl font-bold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">
+    🔍 Anime Episode Tracer
+  </h1>
+
+  <!-- Upload -->
+  <label class="relative overflow-hidden cursor-pointer border-2 border-dashed border-gray-500 rounded-xl px-8 py-12 text-center hover:border-purple-400 transition">
+    <input id="fileInput" type="file" accept="image/*" class="absolute inset-0 opacity-0">
+    <span id="dropZoneText">Drop image or click to select</span>
+  </label>
+
+  <!-- Loading / result placeholders -->
+  <div id="loading"  class="mt-6 hidden">🔍 Searching…</div>
+  <div id="result"   class="mt-6 hidden"></div>
+
+  <!-- Toast container -->
+  <div id="toasts" class="fixed top-5 right-5 z-50 space-y-2"></div>
+
+  <script>
+    /* ---------- helpers ---------- */
+    const $ = sel => document.querySelector(sel);
+    const toast = (text, type='info') => {
+      const t = document.createElement('div');
+      t.className = `toast px-4 py-2 rounded shadow-lg text-sm
+                     ${type==='error'?'bg-red-500 text-white':'bg-green-500 text-white'}`;
+      t.textContent = text;
+      $('#toasts').appendChild(t);
+      setTimeout(()=>t.remove(), 3000);
+    };
+
+    /* ---------- drag & drop ---------- */
+    ['dragenter','dragover','dragleave','drop'].forEach(ev=> {
+      $('label').addEventListener(ev, e=>e.preventDefault());
+    });
+    $('label').addEventListener('drop', e=>{
+      const f = e.dataTransfer.files[0];
+      if (f && f.type.startsWith('image/')) handleFile(f);
+    });
+
+    /* ---------- file input ---------- */
+    $('#fileInput').addEventListener('change', e=>{
+      const f = e.target.files[0];
+      if (f) handleFile(f);
+    });
+
+    /* ---------- main flow ---------- */
+    async function handleFile(file){
+      if (!file.type.startsWith('image/')) return toast('Only images allowed!', 'error');
+
+      $('#dropZoneText').textContent = file.name;
+      $('#loading').classList.remove('hidden');
+      $('#result').classList.add('hidden');
+
+      try {
+        /* 1. upload to cloudgood */
+        const fd = new FormData();
+        fd.append('file', file);
+
+        const up = await fetch('https://cloudgood.xyz/upload.php', {
+          method: 'POST', body: fd
+        }).then(r=>r.json());
+        if (!up.url) throw new Error('Upload failed');
+
+        /* 2. search episode */
+        const searchUrl = `https://apii.baguss.web.id/search/epanime?apikey=bagus&url=${encodeURIComponent(up.url)}`;
+        const res = await fetch(searchUrl).then(r=>r.json());
+        if (!res.success) throw new Error('Episode not found');
+
+        /* 3. display */
+        $('#loading').classList.add('hidden');
+        $('#result').innerHTML = `
+          <div class="bg-gray-800 rounded-xl p-4 max-w-md w-full">
+            <h2 class="text-lg font-semibold mb-2">${res.filename}</h2>
+            <p class="text-sm text-gray-300 mb-3">Episode ${res.episode}</p>
+            <video controls class="w-full rounded" src="${res.video}"></video>
+          </div>`;
+        $('#result').classList.remove('hidden');
+
+      } catch (e) {
+        console.error(e);
+        toast('❌ ' + e.message, 'error');
+        $('#loading').classList.add('hidden');
+      }
+    }
+  </script>
+</body>
+</html>
