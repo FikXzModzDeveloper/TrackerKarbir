@@ -7,7 +7,6 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <style>
-    /* shimmer skeleton */
     @keyframes shimmer {
       0% { background-position: -1000px 0; }
       100% { background-position: 1000px 0; }
@@ -21,7 +20,6 @@
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
   <div x-data="traceApp()" class="w-full max-w-lg">
-    
     <!-- Toast container -->
     <div class="fixed top-4 right-4 z-50 space-y-2">
       <template x-for="toast in toasts" :key="toast.id">
@@ -79,7 +77,7 @@
       result: null,
       toasts: [],
       toastId: 0,
-      
+
       addToast(msg, type = 'success') {
         const id = ++this.toastId;
         this.toasts.push({ id, msg, type });
@@ -95,12 +93,15 @@
         this.loading = true;
         this.addToast('Uploading image…');
 
-        // 1. Upload to cloudgood
+        /* ---------- FIXED UPLOAD BLOCK ---------- */
         const fd = new FormData();
-        fd.append('file', file);
+        fd.append('file', file);         // key harus "file"
         let imageUrl;
         try {
-          const up = await fetch('https://cloudgood.xyz/upload.php', { method: 'POST', body: fd });
+          const up = await fetch('https://cloudgood.xyz/upload.php', {
+            method: 'POST',
+            body: fd                       // biarkan browser set boundary
+          });
           const upJson = await up.json();
           if (!upJson.url) throw new Error('Upload failed');
           imageUrl = upJson.url;
@@ -110,8 +111,9 @@
           this.addToast('Upload failed', 'error');
           return;
         }
+        /* --------------------------------------- */
 
-        // 2. Trace episode
+        // Trace episode
         try {
           const search = await fetch(
             `https://apii.baguss.web.id/search/epanime?apikey=bagus&url=${encodeURIComponent(imageUrl)}`
