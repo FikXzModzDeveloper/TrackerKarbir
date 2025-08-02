@@ -1,104 +1,135 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Anime Episode Tracer</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* simple fade-in animation for notifications */
-    @keyframes toast-in {
-      0%   { opacity:0; transform:translateY(-20px); }
-      100% { opacity:1; transform:translateY(0);     }
+    /* skeleton pulse */
+    @keyframes pulse {
+      50% { opacity: .5; }
     }
-    .toast {
-      animation: toast-in .3s ease-out forwards;
+    .skeleton { animation: pulse 1.5s infinite; }
+
+    /* toast fade */
+    .toast-in {
+      animation: fadeIn .3s ease-out forwards;
+    }
+    @keyframes fadeIn {
+      from { opacity:0; transform:translateY(-20px); }
+      to   { opacity:1; transform:translateY(0); }
     }
   </style>
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
 
-  <h1 class="text-3xl font-bold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">
-    🔍 Anime Episode Tracer
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center justify-center font-sans p-4">
+  <div class="absolute inset-0 -z-10 bg-gradient-to-br from-purple-900/30 via-slate-900 to-pink-900/30"></div>
+
+  <h1 class="text-4xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">
+    🔍 Trace Anime Episode
   </h1>
+  <p class="text-slate-400 mb-8 text-center max-w-sm">
+    Upload screenshot anime, lalu kami carikan episodenya.
+  </p>
 
-  <!-- Upload -->
-  <label class="relative overflow-hidden cursor-pointer border-2 border-dashed border-gray-500 rounded-xl px-8 py-12 text-center hover:border-purple-400 transition">
-    <input id="fileInput" type="file" accept="image/*" class="absolute inset-0 opacity-0">
-    <span id="dropZoneText">Drop image or click to select</span>
+  <!-- Upload card -->
+  <label id="dropZone"
+         class="relative w-full max-w-md p-10 border-2 border-dashed border-slate-600 rounded-2xl
+                hover:border-purple-400 transition-all duration-300 cursor-pointer
+                bg-slate-800/40 backdrop-blur-sm">
+    <input id="fileInput" type="file" accept="image/*" class="absolute inset-0 opacity-0" />
+    <div class="text-center">
+      <svg class="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" stroke-width="2"
+           viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round"
+           d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+      <p class="mt-2 text-sm text-slate-300">Drag & drop atau klik untuk pilih gambar.</p>
+    </div>
   </label>
 
-  <!-- Loading / result placeholders -->
-  <div id="loading"  class="mt-6 hidden">🔍 Searching…</div>
-  <div id="result"   class="mt-6 hidden"></div>
+  <!-- skeleton / loading -->
+  <div id="loading" class="hidden mt-6 w-full max-w-md">
+    <div class="skeleton bg-slate-700/50 rounded-xl p-4 space-y-3">
+      <div class="h-4 w-3/4 bg-slate-600 rounded"></div>
+      <div class="h-4 w-1/2 bg-slate-600 rounded"></div>
+      <div class="aspect-video bg-slate-600 rounded"></div>
+    </div>
+  </div>
 
-  <!-- Toast container -->
+  <!-- result -->
+  <div id="result" class="hidden mt-6 w-full max-w-md"></div>
+
+  <!-- toast container -->
   <div id="toasts" class="fixed top-5 right-5 z-50 space-y-2"></div>
 
   <script>
     /* ---------- helpers ---------- */
     const $ = sel => document.querySelector(sel);
-    const toast = (text, type='info') => {
-      const t = document.createElement('div');
-      t.className = `toast px-4 py-2 rounded shadow-lg text-sm
-                     ${type==='error'?'bg-red-500 text-white':'bg-green-500 text-white'}`;
-      t.textContent = text;
-      $('#toasts').appendChild(t);
-      setTimeout(()=>t.remove(), 3000);
+    const toast = (text, type = 'info') => {
+      const div = document.createElement('div');
+      div.className = `toast-in px-4 py-2 rounded shadow-lg text-sm pointer-events-auto
+                       ${type === 'error' ? 'bg-red-500' : 'bg-green-500'} text-white`;
+      div.textContent = text;
+      $('#toasts').appendChild(div);
+      setTimeout(() => div.remove(), 3500);
     };
 
     /* ---------- drag & drop ---------- */
-    ['dragenter','dragover','dragleave','drop'].forEach(ev=> {
-      $('label').addEventListener(ev, e=>e.preventDefault());
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt =>
+      $('#dropZone').addEventListener(evt, e => e.preventDefault())
+    );
+    $('#dropZone').addEventListener('drop', e => {
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) handleFile(file);
     });
-    $('label').addEventListener('drop', e=>{
-      const f = e.dataTransfer.files[0];
-      if (f && f.type.startsWith('image/')) handleFile(f);
-    });
-
-    /* ---------- file input ---------- */
-    $('#fileInput').addEventListener('change', e=>{
-      const f = e.target.files[0];
-      if (f) handleFile(f);
+    $('#fileInput').addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (file) handleFile(file);
     });
 
-    /* ---------- main flow ---------- */
-    async function handleFile(file){
-      if (!file.type.startsWith('image/')) return toast('Only images allowed!', 'error');
+    /* ---------- proxy ---------- */
+    // CORS-Anywhere demo. Jika rate-limit, deploy proxy sendiri.
+    const PROXY = 'https://api.allorigins.win/raw?url=';
 
-      $('#dropZoneText').textContent = file.name;
+    async function handleFile(file) {
+      $('#dropZone').classList.add('opacity-40', 'pointer-events-none');
       $('#loading').classList.remove('hidden');
       $('#result').classList.add('hidden');
 
       try {
-        /* 1. upload to cloudgood */
+        /* 1. upload image */
         const fd = new FormData();
         fd.append('file', file);
 
-        const up = await fetch('https://cloudgood.xyz/upload.php', {
-          method: 'POST', body: fd
-        }).then(r=>r.json());
-        if (!up.url) throw new Error('Upload failed');
+        const uploadRes = await fetch(PROXY + encodeURIComponent('https://cloudgood.xyz/upload.php'), {
+          method: 'POST',
+          body: fd,
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        }).then(r => r.json());
+
+        if (!uploadRes?.url) throw new Error('Gagal upload gambar');
 
         /* 2. search episode */
-        const searchUrl = `https://apii.baguss.web.id/search/epanime?apikey=bagus&url=${encodeURIComponent(up.url)}`;
-        const res = await fetch(searchUrl).then(r=>r.json());
-        if (!res.success) throw new Error('Episode not found');
+        const searchUrl = `https://apii.baguss.web.id/search/epanime?apikey=bagus&url=${encodeURIComponent(uploadRes.url)}`;
+        const search = await fetch(PROXY + encodeURIComponent(searchUrl)).then(r => r.json());
+        if (!search.success) throw new Error('Episode tidak ditemukan');
 
-        /* 3. display */
+        /* 3. tampilkan */
         $('#loading').classList.add('hidden');
         $('#result').innerHTML = `
-          <div class="bg-gray-800 rounded-xl p-4 max-w-md w-full">
-            <h2 class="text-lg font-semibold mb-2">${res.filename}</h2>
-            <p class="text-sm text-gray-300 mb-3">Episode ${res.episode}</p>
-            <video controls class="w-full rounded" src="${res.video}"></video>
+          <div class="bg-slate-800/60 backdrop-blur-sm border border-slate-700 rounded-xl p-4 space-y-3">
+            <h2 class="font-bold text-lg">${search.filename}</h2>
+            <p class="text-sm text-slate-300">Episode ${search.episode}</p>
+            <video controls class="w-full rounded aspect-video bg-black" src="${search.video}"></video>
           </div>`;
         $('#result').classList.remove('hidden');
 
-      } catch (e) {
-        console.error(e);
-        toast('❌ ' + e.message, 'error');
+      } catch (err) {
+        console.error(err);
+        toast(err.message || 'Koneksi bermasalah', 'error');
         $('#loading').classList.add('hidden');
+      } finally {
+        $('#dropZone').classList.remove('opacity-40', 'pointer-events-none');
       }
     }
   </script>
