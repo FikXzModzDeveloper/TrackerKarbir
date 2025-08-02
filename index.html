@@ -80,70 +80,85 @@ function traceApp() {
     toasts: [],
     toastId: 0,
 
-    /* Helper untuk menampilkan toast otomatis hilang dalam 3 detik */
-    addToast(msg, type = "success") {
+    /* helper untuk toast */
+    addToast(msg, type = 'success') {
       const id = ++this.toastId;
       this.toasts.push({ id, msg, type });
-      setTimeout(() => (this.toasts = this.toasts.filter(t => t.id !== id)), 3000);
+      setTimeout(() => this.toasts.shift(), 3000);
     },
 
-    /* Delay helper (promise) */
+    /* helper delay */
     sleep(ms) {
       return new Promise(r => setTimeout(r, ms));
     },
 
     async handleFile(file) {
-      /* Validasi file */
-      if (!file) return;
-      const allowed = ["image/jpeg", "image/png", "image/webp"];
-      if (!allowed.includes(file.type)) {
-        this.addToast("Only JPG / PNG / WEBP images are allowed", "error");
+      /* validasi file */
+      if (!file || !file.type?.startsWith('image/')) {
+        this.addToast('Please select an image file', 'error');
         return;
       }
 
-      /* Reset state */
+      /* reset state */
       this.result = null;
       this.loading = true;
-      this.addToast("Uploading image…");
 
-      /* 1. Upload ke cloudgood */
+      /* step 1 : upload ke cloudgood */
       try {
+        this.addToast('Uploading image …');
         const fd = new FormData();
-        fd.append("file", file);
+        fd.append('file', file);
 
-        const up = await fetch("https://cloudgood.xyz/upload.php", {
-          method: "POST",
-          body: fd
+        const controller = new AbortController();
+        const timeoutId  = setTimeout(() => controller.abort(), 20_000); // 20 s timeout
+
+        const up = await fetch('https://cloudgood.xyz/upload.php', {
+          method : 'POST',
+          body   : fd,
+          signal : controller.signal
         });
-        await this.sleep(800); // delay supaya terlihat loading
+        clearTimeout(timeoutId);
 
+        if (!up.ok) throw new Error(`Upload failed (${up.status})`);
         const upJson = await up.json();
-        if (!upJson?.url) throw new Error("Upload response invalid");
+        if (!upJson.url) throw new Error('Upload returned no URL');
 
-        this.addToast("Image uploaded, searching episode…");
+        const imageUrl = upJson.url;
 
-        /* 2. Trace episode */
+        /* delay khusyuk sejenak (UX) */
+        await this.sleep(600);
+        this.addToast('Image uploaded, searching episode …');
+
+        /* step 2 : trace episode */
+        await this.sleep(400); // delay tambahan supaya terasa “berproses”
+
+        const searchController = new AbortController();
+        const searchTimeout    = setTimeout(() => searchController.abort(), 25_000);
+
         const search = await fetch(
-          `https://apii.baguss.web.id/search/epanime?apikey=bagus&url=${encodeURIComponent(
-            upJson.url
-          )}`
+          `https://apii.baguss.web.id/search/epanime?apikey=bagus&url=${encodeURIComponent(imageUrl)}`,
+          { signal: searchController.signal }
         );
-        await this.sleep(800); // delay kedua
+        clearTimeout(searchTimeout);
 
+        if (!search.ok) throw new Error(`Search failed (${search.status})`);
         const data = await search.json();
-        if (!data?.success) throw new Error("Search response invalid");
+        if (!data.success) throw new Error('Anime not found / API error');
 
         this.result = data;
-        this.addToast("Episode found!");
+        this.addToast('Episode found!');
       } catch (err) {
         console.error(err);
-        this.addToast(err.message || "Something went wrong", "error");
+        const msg = err.name === 'AbortError'
+          ? 'Request timeout – please try again'
+          : err.message || 'Network error';
+        this.addToast(msg, 'error');
       } finally {
         this.loading = false;
       }
     }
   };
 }
-</script> 
+</script>
 </body>
 </html>
