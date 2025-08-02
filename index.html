@@ -72,83 +72,78 @@
     </div>
   </div>
 
-  <script>
-  function traceApp() {
-    return {
-      loading: false,
-      result: null,
-      toasts: [],
-      toastId: 0,
-      
-      addToast(msg, type = 'success') {
-        const id = ++this.toastId;
-        this.toasts.push({ id, msg, type });
-        setTimeout(() => this.toasts.shift(), 3000);
-      },
+<script>
+function traceApp() {
+  return {
+    loading: false,
+    result: null,
+    toasts: [],
+    toastId: 0,
 
-      async handleFile(file) {
-        if (!file || !file.type.startsWith('image/')) {
-          this.addToast('Please select an image file', 'error');
-          return;
-        }
-        this.result = null;
-        this.loading = true;
-        this.addToast('Uploading image…');
+    /* Helper untuk menampilkan toast otomatis hilang dalam 3 detik */
+    addToast(msg, type = "success") {
+      const id = ++this.toastId;
+      this.toasts.push({ id, msg, type });
+      setTimeout(() => (this.toasts = this.toasts.filter(t => t.id !== id)), 3000);
+    },
 
-        // 1. Upload with fallback (Catbox → Uguu)
-        let imageUrl;
-        try {
-          const fd = new FormData();
-          fd.append('reqtype', 'fileupload');
-          fd.append('userhash', '');
-          fd.append('fileToUpload', file);
+    /* Delay helper (promise) */
+    sleep(ms) {
+      return new Promise(r => setTimeout(r, ms));
+    },
 
-          const up = await fetch('https://catbox.moe/user/api.php', {
-            method: 'POST',
-            body: fd
-          });
-          const catboxUrl = await up.text();
-          if (!catboxUrl || !catboxUrl.startsWith('http')) throw new Error('Catbox failed');
-          imageUrl = catboxUrl;
-          this.addToast('Image uploaded via Catbox, searching episode…');
-        } catch (catErr) {
-          console.warn('Catbox failed, trying Uguu…');
-          try {
-            const fd = new FormData();
-            fd.append('files[]', file);
-
-            const up = await fetch('https://uguu.se/upload.php', {
-              method: 'POST',
-              body: fd
-            });
-            const uguuJson = await up.json();
-            if (!uguuJson.files?.[0]?.url) throw new Error('Uguu failed');
-            imageUrl = uguuJson.files[0].url;
-            this.addToast('Image uploaded via Uguu.se, searching episode…');
-          } catch (uguuErr) {
-            this.loading = false;
-            this.addToast('Upload failed on all services', 'error');
-            return;
-          }
-        }
-
-        // 2. Trace episode
-        try {
-          const search = await fetch(
-            `https://apii.baguss.web.id/search/epanime?apikey=bagus&url=${encodeURIComponent(imageUrl)}`
-          );
-          const data = await search.json();
-          if (!data.success) throw new Error('Search failed');
-          this.result = data;
-          this.addToast('Episode found!');
-        } catch (e) {
-          this.addToast('Search failed', 'error');
-        } finally {
-          this.loading = false;
-        }
+    async handleFile(file) {
+      /* Validasi file */
+      if (!file) return;
+      const allowed = ["image/jpeg", "image/png", "image/webp"];
+      if (!allowed.includes(file.type)) {
+        this.addToast("Only JPG / PNG / WEBP images are allowed", "error");
+        return;
       }
-    };
-  }
-  </script>
+
+      /* Reset state */
+      this.result = null;
+      this.loading = true;
+      this.addToast("Uploading image…");
+
+      /* 1. Upload ke cloudgood */
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+
+        const up = await fetch("https://cloudgood.xyz/upload.php", {
+          method: "POST",
+          body: fd
+        });
+        await this.sleep(800); // delay supaya terlihat loading
+
+        const upJson = await up.json();
+        if (!upJson?.url) throw new Error("Upload response invalid");
+
+        this.addToast("Image uploaded, searching episode…");
+
+        /* 2. Trace episode */
+        const search = await fetch(
+          `https://apii.baguss.web.id/search/epanime?apikey=bagus&url=${encodeURIComponent(
+            upJson.url
+          )}`
+        );
+        await this.sleep(800); // delay kedua
+
+        const data = await search.json();
+        if (!data?.success) throw new Error("Search response invalid");
+
+        this.result = data;
+        this.addToast("Episode found!");
+      } catch (err) {
+        console.error(err);
+        this.addToast(err.message || "Something went wrong", "error");
+      } finally {
+        this.loading = false;
+      }
+    }
+  };
+}
+</script> 
 </body>
 </html>
